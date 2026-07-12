@@ -169,16 +169,45 @@ export default function AnalyzeBug() {
   const [dragActive, setDragActive] = useState(false)
   const [expandedReasoning, setExpandedReasoning] = useState<number | null>(null)
   const [expandedDuplicate, setExpandedDuplicate] = useState<string | null>(null)
-  const [jiraForm, setJiraForm] = useState(mockAnalysisResult.jiraPreview)
+  const [analysisResult, setAnalysisResult] = useState<Record<string, unknown> | null>(null)
+  const [jiraForm, setJiraForm] = useState<Record<string, unknown> | null>(null)
   const [ticketCreated, setTicketCreated] = useState<{ key: string; url: string } | null>(null)
+  const [creatingTicket, setCreatingTicket] = useState(false)
   
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const handleCreateTicket = useCallback(() => {
-    setTimeout(() => {
-      setTicketCreated({ key: "PROJ-2147", url: "https://company.atlassian.net/browse/PROJ-2147" })
-    }, 1500)
-  }, [])
+  const handleCreateTicket = useCallback(async () => {
+    if (!analysisResult) return
+    const jiraData = analysisResult.jiraPreview as Record<string, unknown> | undefined
+    if (!jiraData) return
+
+    setCreatingTicket(true)
+    try {
+      const res = await fetch("/api/jira", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          analysisId: analysisResult.id,
+          project: jiraData.project || "PROJ",
+          issueType: jiraData.issueType || "Bug",
+          summary: jiraData.summary || analysisResult.rootCause,
+          description: jiraData.description || analysisResult.reason,
+          priority: jiraData.priority || analysisResult.priority,
+          labels: jiraData.labels,
+          components: jiraData.components,
+          epic: jiraData.epic,
+        }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setTicketCreated({ key: data.ticketKey, url: data.url })
+      }
+    } catch (err) {
+      console.error("Ticket creation error:", err)
+    } finally {
+      setCreatingTicket(false)
+    }
+  }, [analysisResult])
 
   const handleDrag = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -207,17 +236,42 @@ export default function AnalyzeBug() {
 
   const startAnalysis = async () => {
     if (files.length === 0 && !textInput.trim()) return
-    
+
     setStage("analyzing")
     setCurrentStep(0)
-    
-    // Simulate pipeline
+
+    // Animate through pipeline steps while AI processes
     for (let i = 0; i < pipelineSteps.length; i++) {
       setCurrentStep(i)
       await new Promise(resolve => setTimeout(resolve, pipelineSteps[i].duration))
     }
-    
-    setStage("results")
+
+    // Call real AI API
+    try {
+      const formData = new FormData()
+      for (const file of files) {
+        formData.append("files", file)
+      }
+      formData.append("text", textInput)
+
+      const res = await fetch("/api/analyze", {
+        method: "POST",
+        body: formData,
+      })
+
+      if (!res.ok) {
+        throw new Error("Analysis failed")
+      }
+
+      const data = await res.json()
+      setAnalysisResult(data)
+      setJiraForm(data.jiraPreview as Record<string, unknown>)
+      setStage("results")
+    } catch (err) {
+      console.error("Analysis error:", err)
+      alert("Analysis failed. Please check your OpenRouter API key and try again.")
+      setStage("upload")
+    }
   }
 
   const getFileIcon = (file: File) => {
@@ -498,8 +552,9 @@ export default function AnalyzeBug() {
     )
   }
 
-  // Results Stage
-  const result = mockAnalysisResult
+  // Results Stage - cast to any since AI response shape differs from mock
+  const result = analysisResult || mockAnalysisResult
+  const r = result as any
 
   return (
     <main className="flex-1 ml-64 p-6 lg:ml-64 min-h-screen">
@@ -509,9 +564,9 @@ export default function AnalyzeBug() {
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Analysis Complete</h1>
             <p className="text-muted-foreground mt-1">
-              AI confidence: <span className="font-bold text-primary">{result.confidence}%</span> • 
-              Severity: <span className="font-bold text-destructive">{result.severity}</span> • 
-              Priority: <Badge variant="destructive">{result.priority}</Badge>
+              AI confidence: <span className="font-bold text-primary">{r.confidence}%</span> •
+              Severity: <span className="font-bold text-destructive">{r.severity}</span> •
+              Priority: <Badge variant="destructive">{r.priority}</Badge>
             </p>
           </div>
           <div className="flex gap-2">
@@ -537,37 +592,37 @@ export default function AnalyzeBug() {
               <CardContent>
                 <div className="space-y-4">
                   <div className="p-4 bg-destructive/10 rounded-lg border border-destructive/20">
-                    <code className="font-mono text-sm text-destructive">{result.rootCause}</code>
+                    <code className="font-mono text-sm text-destructive">{r.rootCause}</code>
                   </div>
                   
                   <div>
                     <h4 className="font-medium mb-2">Why This Happened</h4>
-                    <p className="text-muted-foreground leading-relaxed">{result.reason}</p>
+                    <p className="text-muted-foreground leading-relaxed">{r.reason}</p>
                   </div>
 
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 border-t">
                     <div className="text-center p-3 bg-muted/50 rounded-lg">
-                      <p className="text-2xl font-bold text-primary">{result.confidence}%</p>
+                      <p className="text-2xl font-bold text-primary">{r.confidence}%</p>
                       <p className="text-xs text-muted-foreground">Confidence</p>
                     </div>
                     <div className="text-center p-3 bg-muted/50 rounded-lg">
-                      <p className="text-2xl font-bold text-destructive">{result.severity}</p>
+                      <p className="text-2xl font-bold text-destructive">{r.severity}</p>
                       <p className="text-xs text-muted-foreground">Severity</p>
                     </div>
                     <div className="text-center p-3 bg-muted/50 rounded-lg">
-                      <p className="text-2xl font-bold text-orange-500">{result.priority}</p>
+                      <p className="text-2xl font-bold text-orange-500">{r.priority}</p>
                       <p className="text-xs text-muted-foreground">Priority</p>
                     </div>
                     <div className="text-center p-3 bg-muted/50 rounded-lg">
-                      <p className="text-2xl font-bold text-blue-500">{result.estimatedTime}</p>
+                      <p className="text-2xl font-bold text-blue-500">{r.estimatedTime}</p>
                       <p className="text-xs text-muted-foreground">Est. Fix Time</p>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-3">
-                    <Badge variant={result.risk === "High" ? "destructive" : result.risk === "Medium" ? "warning" : "success"}>
+                    <Badge variant={r.risk === "High" ? "destructive" : r.risk === "Medium" ? "warning" : "success"}>
                       <Shield className="h-3 w-3 mr-1" />
-                      Risk: {result.risk}
+                      Risk: {r.risk}
                     </Badge>
                     <span className="text-sm text-muted-foreground">Assessment based on code change scope and test coverage</span>
                   </div>
@@ -592,67 +647,81 @@ export default function AnalyzeBug() {
                         <AlertCircle className="h-4 w-4 text-destructive" />
                         Problem
                       </h4>
-                      <p className="text-muted-foreground mt-1">{result.suggestedFix.problem}</p>
+                      <p className="text-muted-foreground mt-1">
+                        {typeof r.suggestedFix === "object" ? r.suggestedFix.problem : r.suggestedFix}
+                      </p>
                     </div>
+                    {typeof r.suggestedFix === "object" && r.suggestedFix.explanation && (
+                      <div>
+                        <h4 className="font-medium flex items-center gap-2">
+                          <Info className="h-4 w-4 text-blue-500" />
+                          Explanation
+                        </h4>
+                        <p className="text-muted-foreground mt-1">{r.suggestedFix.explanation}</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Code Comparison — only when suggestedFix is an object */}
+                  {typeof r.suggestedFix === "object" && (r.suggestedFix.codeBefore || r.suggestedFix.codeAfter) && (
+                    <div className="space-y-4">
+                      <h4 className="font-medium">Code Changes</h4>
+                      <div className="grid md:grid-cols-2 gap-4">
+                        {r.suggestedFix.codeBefore && (
+                          <div>
+                            <p className="text-xs text-muted-foreground mb-1">Before (Problematic)</p>
+                            <pre className="bg-muted p-4 rounded-lg overflow-x-auto max-h-64 overflow-y-auto">
+                              <code className="font-mono text-xs text-destructive/80">{r.suggestedFix.codeBefore}</code>
+                            </pre>
+                          </div>
+                        )}
+                        {r.suggestedFix.codeAfter && (
+                          <div>
+                            <p className="text-xs text-muted-foreground mb-1">After (Fixed)</p>
+                            <pre className="bg-green-500/10 p-4 rounded-lg overflow-x-auto max-h-64 overflow-y-auto border border-green-500/20">
+                              <code className="font-mono text-xs text-green-700 dark:text-green-400">{r.suggestedFix.codeAfter}</code>
+                            </pre>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Best Practices — only when suggestedFix is an object */}
+                  {typeof r.suggestedFix === "object" && r.suggestedFix.bestPractices?.length > 0 && (
                     <div>
                       <h4 className="font-medium flex items-center gap-2">
-                        <Info className="h-4 w-4 text-blue-500" />
-                        Explanation
+                        <CheckCircle className="h-4 w-4 text-green-500" />
+                        Best Practices Applied
                       </h4>
-                      <p className="text-muted-foreground mt-1">{result.suggestedFix.explanation}</p>
+                      <ul className="mt-2 space-y-1">
+                        {r.suggestedFix.bestPractices.map((practice: any, i: any) => (
+                          <li key={i} className="text-sm text-muted-foreground flex items-start gap-2">
+                            <CheckCircle className="h-4 w-4 text-green-500 flex-shrink-0 mt-0.5" />
+                            {practice}
+                          </li>
+                        ))}
+                      </ul>
                     </div>
-                  </div>
+                  )}
 
-                  {/* Code Comparison */}
-                  <div className="space-y-4">
-                    <h4 className="font-medium">Code Changes</h4>
-                    <div className="grid md:grid-cols-2 gap-4">
-                      <div>
-                        <p className="text-xs text-muted-foreground mb-1">Before (Problematic)</p>
-                        <pre className="bg-muted p-4 rounded-lg overflow-x-auto max-h-64 overflow-y-auto">
-                          <code className="font-mono text-xs text-destructive/80">{result.suggestedFix.codeBefore}</code>
-                        </pre>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground mb-1">After (Fixed)</p>
-                        <pre className="bg-green-500/10 p-4 rounded-lg overflow-x-auto max-h-64 overflow-y-auto border border-green-500/20">
-                          <code className="font-mono text-xs text-green-700 dark:text-green-400">{result.suggestedFix.codeAfter}</code>
-                        </pre>
-                      </div>
+                  {/* Side Effects — only when suggestedFix is an object */}
+                  {typeof r.suggestedFix === "object" && r.suggestedFix.sideEffects?.length > 0 && (
+                    <div>
+                      <h4 className="font-medium flex items-center gap-2">
+                        <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                        Possible Side Effects
+                      </h4>
+                      <ul className="mt-2 space-y-1">
+                        {r.suggestedFix.sideEffects.map((effect: any, i: any) => (
+                          <li key={i} className="text-sm text-muted-foreground flex items-start gap-2">
+                            <AlertCircle className="h-4 w-4 text-yellow-500 flex-shrink-0 mt-0.5" />
+                            {effect}
+                          </li>
+                        ))}
+                      </ul>
                     </div>
-                  </div>
-
-                  {/* Best Practices */}
-                  <div>
-                    <h4 className="font-medium flex items-center gap-2">
-                      <CheckCircle className="h-4 w-4 text-green-500" />
-                      Best Practices Applied
-                    </h4>
-                    <ul className="mt-2 space-y-1">
-                      {result.suggestedFix.bestPractices.map((practice, i) => (
-                        <li key={i} className="text-sm text-muted-foreground flex items-start gap-2">
-                          <CheckCircle className="h-4 w-4 text-green-500 flex-shrink-0 mt-0.5" />
-                          {practice}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  {/* Side Effects */}
-                  <div>
-                    <h4 className="font-medium flex items-center gap-2">
-                      <AlertTriangle className="h-4 w-4 text-yellow-500" />
-                      Possible Side Effects
-                    </h4>
-                    <ul className="mt-2 space-y-1">
-                      {result.suggestedFix.sideEffects.map((effect, i) => (
-                        <li key={i} className="text-sm text-muted-foreground flex items-start gap-2">
-                          <AlertCircle className="h-4 w-4 text-yellow-500 flex-shrink-0 mt-0.5" />
-                          {effect}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -668,7 +737,7 @@ export default function AnalyzeBug() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {result.reasoningTimeline.map((step) => (
+                  {(r.reasoningTimeline || []).map((step: any) => (
                     <motion.div
                       key={step.step}
                       initial={{ opacity: 0, x: -20 }}
@@ -697,14 +766,14 @@ export default function AnalyzeBug() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {result.similarTickets.map((ticket) => (
+                  {(r.similarTickets || []).map((ticket: any) => (
                     <DuplicateTicketCard 
                       ticket={ticket} 
                       isExpanded={expandedDuplicate === ticket.id}
                       onToggle={() => setExpandedDuplicate(expandedDuplicate === ticket.id ? null : ticket.id)}
                     />
                   ))}
-                  {result.similarTickets.length === 0 && (
+                  {(r.similarTickets || []).length === 0 && (
                     <div className="text-center py-8 text-muted-foreground">
                       <Search className="h-12 w-12 mx-auto mb-3 opacity-30" />
                       <p>No similar tickets found in Jira history</p>
@@ -729,10 +798,11 @@ export default function AnalyzeBug() {
                 {ticketCreated ? (
                   <TicketCreatedCard ticket={ticketCreated} />
                 ) : (
-                  <JiraPreviewForm 
-                    formData={jiraForm} 
+                  <JiraPreviewForm
+                    formData={jiraForm}
                     onChange={setJiraForm}
                     onSubmit={handleCreateTicket}
+                    loading={creatingTicket}
                   />
                 )}
               </CardContent>
@@ -748,14 +818,14 @@ export default function AnalyzeBug() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  <StatRow label="Root Cause" value="NullPointerException" />
-                  <StatRow label="Confidence" value={`${result.confidence}%`} />
-                  <StatRow label="Severity" value={result.severity} />
-                  <StatRow label="Priority" value={result.priority} />
-                  <StatRow label="Est. Fix Time" value={result.estimatedTime} />
-                  <StatRow label="Risk Level" value={result.risk} />
-                  <StatRow label="Similar Tickets" value={result.similarTickets.length.toString()} />
-                  <StatRow label="Components" value={result.jiraPreview.components.length.toString()} />
+                  <StatRow label="Root Cause" value={r.rootCause} />
+                  <StatRow label="Confidence" value={`${r.confidence}%`} />
+                  <StatRow label="Severity" value={r.severity} />
+                  <StatRow label="Priority" value={r.priority} />
+                  <StatRow label="Est. Fix Time" value={r.estimatedTime} />
+                  <StatRow label="Risk Level" value={r.risk} />
+                  <StatRow label="Similar Tickets" value={r.similarTickets.length.toString()} />
+                  <StatRow label="Components" value={r.jiraPreview.components.length.toString()} />
                 </div>
               </CardContent>
             </Card>
@@ -861,7 +931,7 @@ function DuplicateTicketCard({ ticket, isExpanded, onToggle }: { ticket: any, is
   )
 }
 
-function JiraPreviewForm({ formData, onChange, onSubmit }: { formData: any, onChange: any, onSubmit: () => void }) {
+function JiraPreviewForm({ formData, onChange, onSubmit, loading }: { formData: any, onChange: any, onSubmit: () => void, loading?: boolean }) {
   return (
     <form onSubmit={(e) => { e.preventDefault(); onSubmit() }} className="space-y-4">
       <div className="space-y-2">
@@ -928,9 +998,9 @@ function JiraPreviewForm({ formData, onChange, onSubmit }: { formData: any, onCh
         <Input value={formData.environment} onChange={(e) => onChange({...formData, environment: e.target.value})} />
       </div>
       
-      <Button type="submit" className="w-full" size="lg">
-        <Ticket className="h-4 w-4 mr-2" />
-        Create Jira Ticket
+      <Button type="submit" className="w-full" size="lg" disabled={loading}>
+        {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Ticket className="h-4 w-4 mr-2" />}
+        {loading ? "Creating..." : "Create Jira Ticket"}
       </Button>
     </form>
   )

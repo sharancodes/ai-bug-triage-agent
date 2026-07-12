@@ -3,16 +3,19 @@ import { NextRequest, NextResponse } from "next/server"
 
 export const dynamic = "force-dynamic"
 
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY
+const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || "nvidia/nemotron-3-ultra-550b"
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData()
     const files = formData.getAll("files") as File[]
     const text = formData.get("text") as string
-    
+
     // Parse uploaded files
     let fileContents = ""
     const fileNames: string[] = []
-    
+
     for (const file of files) {
       fileNames.push(file.name)
       if (file.type.startsWith("text/") || file.name.endsWith(".log") || file.name.endsWith(".txt")) {
@@ -20,16 +23,16 @@ export async function POST(request: NextRequest) {
         fileContents += `\n\n--- FILE: ${file.name} ---\n${text}`
       }
     }
-    
+
     const rawInput = text + fileContents
-    
+
     if (!rawInput.trim()) {
       return NextResponse.json({ error: "No input provided" }, { status: 400 })
     }
 
-    // Simulate AI analysis pipeline
-    const analysis = await analyzeBug(rawInput, fileNames)
-    
+    // Real AI analysis via OpenRouter
+    const analysis = await analyzeBugWithAI(rawInput, fileNames)
+
     // Save to database
     const saved = await prisma.analysis.create({
       data: {
@@ -53,229 +56,113 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function analyzeBug(input: string, fileNames: string[]) {
-  // Simulated AI pipeline steps
-  const steps = [
-    "Uploading files",
-    "Reading logs",
-    "Parsing stacktrace",
-    "Understanding error",
-    "Searching codebase",
-    "Finding similar bugs",
-    "Reasoning",
-    "Generating fix",
-    "Preparing Jira"
-  ]
-  
-  // In a real implementation, this would call NeMoTron 3 Super 120B
-  // For MVP, we'll do pattern matching and return structured results
-  
-  const analysis = performAnalysis(input, fileNames)
-  return analysis
+async function analyzeBugWithAI(input: string, fileNames: string[]) {
+  if (!OPENROUTER_API_KEY) {
+    throw new Error("OPENROUTER_API_KEY not configured")
+  }
+
+  const systemPrompt = `You are an expert software bug triage AI. Analyze bug reports, stack traces, and error logs.
+
+Return a JSON object with this exact structure:
+{
+  "rootCause": "concise description of the root cause",
+  "reason": "detailed explanation of why this bug occurs",
+  "confidence": 0-100,
+  "severity": "Critical | High | Medium | Low",
+  "priority": "P0 | P1 | P2 | P3",
+  "estimatedTime": "e.g. 30 minutes, 2-3 hours",
+  "risk": "High | Medium | Low",
+  "suggestedFix": "code snippet showing before/after fix",
+  "similarTickets": [{"id": "BUG-123", "match": 85, "reason": "similar cause"}],
+  "jiraPreview": {
+    "summary": "root cause summary for Jira",
+    "description": "detailed Jira description in markdown",
+    "labels": ["bug", "ai-triage"],
+    "components": ["Backend"],
+    "epic": "Bug Fixes"
+  }
 }
 
-function performAnalysis(input: string, fileNames: string[]) {
-  const lowerInput = input.toLowerCase()
-  
-  // Pattern detection
-  let rootCause = "Unknown error"
-  let reason = "Unable to determine root cause from provided information"
-  let confidence = 65
-  let severity = "Medium"
-  let priority = "P3"
-  let estimatedTime = "1-2 hours"
-  let risk = "Medium"
-  let suggestedFix = "Investigate further with additional context"
-  let similarTickets: Array<{id: string, match: number, reason: string}> = []
-  
-  // NullPointerException patterns
-  if (lowerInput.includes("nullpointerexception") || lowerInput.includes("null pointer")) {
-    rootCause = "NullPointerException in OrderService.java:184"
-    reason = "Customer object is null because validation was skipped during guest checkout flow"
-    confidence = 92
-    severity = "High"
-    priority = "P1"
-    estimatedTime = "30 minutes"
-    risk = "Low"
-    suggestedFix = `// OrderService.java:184
-// BEFORE:
-public Order processOrder(Customer customer) {
-    return orderRepository.save(new Order(customer.getId(), ...));
-}
+Rules:
+- confidence should reflect how certain you are based on available evidence
+- severity: Critical=outage, High=data loss/security, Medium=broken feature, Low=cosmetic
+- priority: P0=Critical, P1=High, P2=Medium, P3=Low
+- suggestedFix must be actual code, not a description
+- If input is unclear/insufficient, set confidence below 60 and say what's missing
+- Do not fabricate file names or line numbers not present in the input`
 
-// AFTER:
-public Order processOrder(Customer customer) {
-    if (customer == null) {
-        throw new IllegalArgumentException("Customer cannot be null");
+  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": "http://localhost:3000",
+      "X-Title": "AI Bug Triage Agent",
+    },
+    body: JSON.stringify({
+      model: OPENROUTER_MODEL,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: `Analyze this bug/error:\n\n${input}${fileNames.length > 0 ? `\n\nUploaded files: ${fileNames.join(", ")}` : ""}` }
+      ],
+      temperature: 0.2,
+      max_tokens: 2000,
+    }),
+  })
+
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(`OpenRouter API error ${response.status}: ${errorText}`)
+  }
+
+  const data = await response.json()
+  const content = data.choices?.[0]?.message?.content
+
+  if (!content) {
+    throw new Error("No response from OpenRouter")
+  }
+
+  // Extract JSON from response (model might wrap it in markdown code blocks)
+  let jsonStr = content.trim()
+  const jsonMatch = jsonStr.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/)
+  if (jsonMatch) {
+    jsonStr = jsonMatch[1]
+  } else {
+    // Try to find JSON object in the string
+    const start = jsonStr.indexOf("{")
+    const end = jsonStr.lastIndexOf("}")
+    if (start !== -1 && end !== -1) {
+      jsonStr = jsonStr.substring(start, end + 1)
     }
-    return orderRepository.save(new Order(customer.getId(), ...));
-}`
-    similarTickets = [
-      { id: "BUG-143", match: 96, reason: "Same exception, same endpoint, same module" },
-      { id: "BUG-89", match: 78, reason: "Similar null check missing in PaymentService" }
-    ]
   }
-  // OutOfMemoryError patterns
-  else if (lowerInput.includes("outofmemoryerror") || lowerInput.includes("java.lang.outofmemory")) {
-    rootCause = "OutOfMemoryError: Java heap space in DataProcessor.java:245"
-    reason = "Processing large dataset without streaming - loads entire 2GB CSV into memory"
-    confidence = 88
-    severity = "Critical"
-    priority = "P0"
-    estimatedTime = "2-3 hours"
-    risk = "High"
-    suggestedFix = `// DataProcessor.java:245
-// BEFORE:
-public void processData(File file) {
-    List<String> lines = Files.readAllLines(file.toPath()); // Loads all into memory
-    lines.forEach(this::processLine);
-}
 
-// AFTER:
-public void processData(File file) throws IOException {
-    try (Stream<String> lines = Files.lines(file.toPath())) {
-        lines.forEach(this::processLine); // Stream processing, constant memory
+  let result = JSON.parse(jsonStr)
+
+  // Fallback values for safety
+  if (!result.rootCause) result.rootCause = "Analysis completed"
+  if (!result.confidence) result.confidence = 75
+  if (!result.severity) result.severity = "Medium"
+  if (!result.priority) result.priority = "P2"
+  if (!result.estimatedTime) result.estimatedTime = "1-2 hours"
+  if (!result.risk) result.risk = "Medium"
+  if (!result.suggestedFix) result.suggestedFix = "// Review and implement appropriate fix"
+  if (!result.similarTickets) result.similarTickets = []
+  if (!result.jiraPreview) {
+    result.jiraPreview = {
+      summary: result.rootCause,
+      description: result.reason,
+      labels: ["bug", "ai-triage"],
+      components: ["Backend"],
+      epic: "Bug Fixes",
     }
-}`
-    similarTickets = [
-      { id: "BUG-201", match: 85, reason: "Similar OOM in ReportGenerator" }
-    ]
   }
-  // Database connection issues
-  else if (lowerInput.includes("connection") && (lowerInput.includes("timeout") || lowerInput.includes("refused") || lowerInput.includes("pool"))) {
-    rootCause = "HikariCP connection pool exhausted in DatabaseConfig.java:67"
-    reason = "Connection leak in UserRepository - connections not returned to pool after exception"
-    confidence = 85
-    severity = "High"
-    priority = "P1"
-    estimatedTime = "1 hour"
-    risk = "Medium"
-    suggestedFix = `// UserRepository.java
-// BEFORE:
-@Transactional
-public User findById(Long id) {
-    Connection conn = dataSource.getConnection(); // Never closed on exception
-    return jdbcTemplate.queryForObject("SELECT * FROM users WHERE id = ?", ...);
-}
 
-// AFTER:
-@Transactional
-public User findById(Long id) {
-    return jdbcTemplate.queryForObject("SELECT * FROM users WHERE id = ?", ...); // Let Spring manage connections
-}`
-    similarTickets = [
-      { id: "BUG-156", match: 82, reason: "Connection leak in OrderRepository" }
-    ]
+  // Inject file names into Jira attachments
+  if (result.jiraPreview) {
+    result.jiraPreview.attachments = fileNames.length > 0 ? fileNames : ["stacktrace.log"]
   }
-  // SQL Injection / Query issues
-  else if (lowerInput.includes("sql") && (lowerInput.includes("syntax") || lowerInput.includes("exception"))) {
-    rootCause = "SQLSyntaxErrorException in QueryBuilder.java:112"
-    reason = "Dynamic query building with string concatenation - missing parameter binding"
-    confidence = 78
-    severity = "High"
-    priority = "P2"
-    estimatedTime = "45 minutes"
-    risk = "High"
-    suggestedFix = `// QueryBuilder.java:112
-// BEFORE:
-String query = "SELECT * FROM orders WHERE user_id = " + userId + " AND status = '" + status + "'";
 
-// AFTER:
-String query = "SELECT * FROM orders WHERE user_id = ? AND status = ?";
-return jdbcTemplate.query(query, new Object[]{userId, status}, rowMapper);`
-    similarTickets = [
-      { id: "BUG-77", match: 71, reason: "Similar SQL injection vulnerability in ProductService" }
-    ]
-  }
-  // Generic exception
-  else if (lowerInput.includes("exception") || lowerInput.includes("error") || lowerInput.includes("stack trace")) {
-    rootCause = "Unhandled exception in RequestHandler.java:89"
-    reason = "Missing try-catch around external API call - failures propagate to user"
-    confidence = 72
-    severity = "Medium"
-    priority = "P2"
-    estimatedTime = "1 hour"
-    risk = "Medium"
-    suggestedFix = `// RequestHandler.java:89
-// BEFORE:
-public Response handleRequest(Request req) {
-    ExternalApiResponse resp = externalApi.call(req); // Can throw
-    return Response.ok(resp);
-}
-
-// AFTER:
-public Response handleRequest(Request req) {
-    try {
-        ExternalApiResponse resp = externalApi.call(req);
-        return Response.ok(resp);
-    } catch (ExternalApiException e) {
-        log.error("External API failed", e);
-        return Response.error("Service temporarily unavailable");
-    }
-}`
-    similarTickets = []
-  }
-  
-  // Jira preview
-  const jiraPreview = {
-    project: process.env.DEFAULT_PROJECT || "PROJ",
-    issueType: "Bug",
-    summary: rootCause,
-    description: `## Root Cause
-${reason}
-
-## AI Analysis
-- **Confidence:** ${confidence}%
-- **Severity:** ${severity}
-- **Priority:** ${priority}
-- **Estimated Fix Time:** ${estimatedTime}
-- **Risk Level:** ${risk}
-
-## Suggested Fix
-\`\`\`java
-${suggestedFix}
-\`\`\`
-
-## Steps to Reproduce
-1. Trigger the affected endpoint/flow
-2. Observe the exception in logs
-3. Verify the null condition / memory issue / connection leak
-
-## Expected Behavior
-Application handles edge case gracefully with proper error message
-
-## Actual Behavior
-Application crashes with ${rootCause}
-
-## AI Reasoning
-Analysis performed by NeMoTron 3 Super 120B following structured reasoning pipeline:
-1. Parsed stack trace and identified failing class/method
-2. Extracted exception type and message
-3. Correlated with codebase patterns
-4. Matched against historical bug database
-5. Generated hypothesis with confidence scoring
-6. Recommended fix based on best practices`,
-    priority: priority,
-    labels: ["bug", "ai-triage", "auto-generated"],
-    components: ["Backend", "API"],
-    assignee: "unassigned",
-    epic: "Platform Stability",
-    storyPoints: 3,
-    environment: "Production",
-    attachments: fileNames && fileNames.length > 0 ? fileNames : ["stacktrace.log"]
-  }
-  return {
-    rootCause,
-    reason,
-    confidence,
-    severity,
-    priority,
-    estimatedTime,
-    risk,
-    suggestedFix,
-    similarTickets,
-    jiraPreview
-  }
+  return result
 }
 
 export async function GET() {
