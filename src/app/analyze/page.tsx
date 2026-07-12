@@ -177,9 +177,15 @@ export default function AnalyzeBug() {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleCreateTicket = useCallback(async () => {
-    if (!analysisResult) return
+    if (!analysisResult) {
+      alert("No analysis result. Please run an analysis first.")
+      return
+    }
     const jiraData = analysisResult.jiraPreview as Record<string, unknown> | undefined
-    if (!jiraData) return
+    if (!jiraData) {
+      alert("No Jira preview data found. Please run an analysis first.")
+      return
+    }
 
     setCreatingTicket(true)
     try {
@@ -201,9 +207,12 @@ export default function AnalyzeBug() {
       const data = await res.json()
       if (data.success) {
         setTicketCreated({ key: data.ticketKey, url: data.url })
+      } else {
+        alert("Failed to create ticket: " + (data.error || "Unknown error"))
       }
     } catch (err) {
       console.error("Ticket creation error:", err)
+      alert("Network error creating ticket. Check console.")
     } finally {
       setCreatingTicket(false)
     }
@@ -987,11 +996,11 @@ function JiraPreviewForm({ formData, onChange, onSubmit, loading }: { formData: 
       </div>
       <div className="space-y-2">
         <Label>Labels</Label>
-        <Input value={formData.labels.join(", ")} onChange={(e) => onChange({...formData, labels: e.target.value.split(",").map(s => s.trim())})} />
+        <Input value={(formData.labels || []).join(", ")} onChange={(e) => onChange({...formData, labels: e.target.value.split(",").map(s => s.trim()).filter(Boolean)})} />
       </div>
       <div className="space-y-2">
         <Label>Components</Label>
-        <Input value={formData.components.join(", ")} onChange={(e) => onChange({...formData, components: e.target.value.split(",").map(s => s.trim())})} />
+        <Input value={(formData.components || []).join(", ")} onChange={(e) => onChange({...formData, components: e.target.value.split(",").map(s => s.trim()).filter(Boolean)})} />
       </div>
       <div className="space-y-2">
         <Label>Environment</Label>
