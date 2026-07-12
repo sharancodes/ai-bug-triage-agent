@@ -1,0 +1,26 @@
+java.lang.OutOfMemoryError: Java heap space
+    at java.base/java.util.Arrays.copyOf(Arrays.java:3538)
+    at java.base/java.lang.AbstractStringBuilder.ensureCapacityInternal(AbstractStringBuilder.java:162)
+    at java.base/java.lang.StringBuilder.append(StringBuilder.java:123)
+    at com.example.DataProcessor.processLargeFile(DataProcessor.java:245)
+    at com.example.ETLJob.run(ETLJob.java:89)
+    at java.base/java.lang.Thread.run(Thread.java:829)
+
+Caused by: java.lang.OutOfMemoryError: Java heap space
+    at java.base/java.util.ArrayList.grow(ArrayList.java:134)
+    at java.base/java.util.ArrayList.grow(ArrayList.java:147)
+    at java.base/java.util.ArrayList.add(ArrayList.java:485)
+    at com.example.DataProcessor.readAllLines(DataProcessor.java:112)
+    at com.example.DataProcessor.processLargeFile(DataProcessor.java:240)
+    ... 2 more
+
+Heap dump written to /tmp/java_pid12345.hprof
+
+Memory settings:
+-Xms512m -Xmx2g
+
+GC Log:
+[GC (Allocation Failure) 2024-01-15T10:30:45.123+0000: 123.456: [PSYoungGen: 1024K->512K(1536K)] 2048K->1536K(4096K), 0.0045321 secs]
+[GC (Allocation Failure) 2024-01-15T10:30:46.789+0000: 125.122: [PSYoungGen: 1536K->768K(2048K)] 3072K->2304K(6144K), 0.0089234 secs]
+[Full GC (Ergonomics) 2024-01-15T10:30:48.456+0000: 126.789: [PSYoungGen: 2048K->0K(2048K)] [ParOldGen: 4096K->4096K(4096K)] 6144K->4096K(6144K), [Metaspace: 10240K->10240K(10752K)], 0.1234567 secs]
+[Full GC (Allocation Failure) 2024-01-15T10:30:50.123+0000: 128.456: [PSYoungGen: 2048K->0K(2048K)] [ParOldGen: 4096K->4096K(4096K)] 6144K->4096K(6144K), [Metaspace: 10240K->10240K(10752K)], 0.2345678 secs]

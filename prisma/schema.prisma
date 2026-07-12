@@ -1,0 +1,63 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Analysis {
+  id            String   @id @default(cuid())
+  rootCause     String
+  reason        String
+  confidence    Int
+  severity      String
+  priority      String
+  estimatedTime String?
+  risk          String?
+  suggestedFix  String?
+  similarTickets String?
+  jiraPreview   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  jiraTicket    JiraTicket?
+}
+
+model JiraTicket {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  analysisId  String   @unique
+  project     String
+  issueType   String
+  summary     String
+  description String?
+  priority    String
+  labels      String?
+  components  String?
+  assignee    String?
+  epic        String?
+  storyPoints Int?
+  environment String?
+  attachments String?
+  status      String   @default("Created")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  analysis    Analysis? @relation(fields: [analysisId], references: [id])
+}
+
+model Settings {
+  id            Int      @id @default(1)
+  jiraUrl       String?
+  jiraEmail     String?
+  jiraApiToken  String?
+  defaultProject String?
+  defaultSprint  String?
+  defaultLabels  String?
+  defaultComponents String?
+  defaultAssignee String?
+  updatedAt     DateTime @updatedAt
+}

@@ -1,0 +1,25 @@
+com.mysql.cj.jdbc.exceptions.MySQLSyntaxErrorException: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near ''admin' OR '1'='1'' at line 1
+    at com.mysql.cj.jdbc.exceptions.SQLError.createSQLException(SQLError.java:120)
+    at com.mysql.cj.jdbc.exceptions.SQLExceptionsMapping.translateException(SQLExceptionsMapping.java:122)
+    at com.mysql.cj.jdbc.ClientPreparedStatement.executeInternal(ClientPreparedStatement.java:953)
+    at com.mysql.cj.jdbc.ClientPreparedStatement.executeQuery(ClientPreparedStatement.java:1003)
+    at com.example.QueryBuilder.executeSearch(QueryBuilder.java:112)
+    at com.example.UserController.searchUsers(UserController.java:45)
+    at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+    at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
+    at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+    at java.base/java.lang.reflect.Method.invoke(Method.java:566)
+    at org.springframework.web.method.support.InvocableHandlerMethod.doInvoke(InvocableHandlerMethod.java:190)
+    at org.springframework.web.method.support.InvocableHandlerMethod.invokeForRequest(InvocableHandlerMethod.java:138)
+
+Malicious input detected:
+POST /api/users/search
+Body: { "query": "admin' OR '1'='1" }
+
+QueryBuilder.java:112:
+String sql = "SELECT * FROM users WHERE name = '" + query + "'";
+return jdbcTemplate.queryForList(sql);
+
+Expected safe pattern:
+String sql = "SELECT * FROM users WHERE name = ?";
+return jdbcTemplate.queryForList(sql, query);
