@@ -91,22 +91,20 @@ export default function SettingsPage() {
     }
     setTesting(true)
     try {
-      // Test by hitting Jira REST API to get current user
-      const credentials = btoa(`${settings.jiraEmail}:${settings.jiraApiToken}`)
-      const res = await fetch(`${settings.jiraUrl}/rest/api/3/myself`, {
-        headers: {
-          "Authorization": `Basic ${credentials}`,
-          "Accept": "application/json",
-        },
+      const res = await fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jiraUrl: settings.jiraUrl,
+          jiraEmail: settings.jiraEmail,
+          jiraApiToken: settings.jiraApiToken,
+        }),
       })
-      if (!res.ok) {
-        const err = await res.text()
-        throw new Error(err)
-      }
-      const me = await res.json()
-      setTestResult({ success: true, message: `Connected as ${me.displayName} (${me.emailAddress})` })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.message || "Connection failed")
+      setTestResult({ success: true, message: data.message })
     } catch (error) {
-      setTestResult({ success: false, message: `Connection failed: ${(error as Error).message}` })
+      setTestResult({ success: false, message: (error as Error).message })
     } finally {
       setTesting(false)
     }
