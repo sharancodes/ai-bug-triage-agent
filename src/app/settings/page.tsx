@@ -69,8 +69,12 @@ export default function SettingsPage() {
   const handleSave = async () => {
     setSaving(true)
     try {
-      // In production, this would call the API
-      await new Promise(resolve => setTimeout(resolve, 1000))
+      const res = await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(settings),
+      })
+      if (!res.ok) throw new Error("Save failed")
       setSaved(true)
       toast({ title: "Settings saved successfully" })
     } catch (error) {
@@ -87,11 +91,22 @@ export default function SettingsPage() {
     }
     setTesting(true)
     try {
-      // Simulate connection test
-      await new Promise(resolve => setTimeout(resolve, 1500))
-      setTestResult({ success: true, message: "Successfully connected to Jira!" })
+      // Test by hitting Jira REST API to get current user
+      const credentials = btoa(`${settings.jiraEmail}:${settings.jiraApiToken}`)
+      const res = await fetch(`${settings.jiraUrl}/rest/api/3/myself`, {
+        headers: {
+          "Authorization": `Basic ${credentials}`,
+          "Accept": "application/json",
+        },
+      })
+      if (!res.ok) {
+        const err = await res.text()
+        throw new Error(err)
+      }
+      const me = await res.json()
+      setTestResult({ success: true, message: `Connected as ${me.displayName} (${me.emailAddress})` })
     } catch (error) {
-      setTestResult({ success: false, message: "Failed to connect to Jira. Check your credentials." })
+      setTestResult({ success: false, message: `Connection failed: ${(error as Error).message}` })
     } finally {
       setTesting(false)
     }
