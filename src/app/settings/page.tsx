@@ -42,7 +42,7 @@ import { toast } from "@/components/ui/use-toast"
 import { cn } from "@/lib/utils"
 
 const defaultSettings = {
-  jiraUrl: "https://your-company.atlassian.net",
+  jiraUrl: "https://sharanhitam.atlassian.net",
   jiraEmail: "dev@company.com",
   jiraApiToken: "",
   defaultProject: "PROJ",

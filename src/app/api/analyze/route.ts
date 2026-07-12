@@ -262,7 +262,6 @@ Analysis performed by NeMoTron 3 Super 120B following structured reasoning pipel
     environment: "Production",
     attachments: fileNames && fileNames.length > 0 ? fileNames : ["stacktrace.log"]
   }
-  
   return {
     rootCause,
     reason,

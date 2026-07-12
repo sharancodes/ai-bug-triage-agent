@@ -5,7 +5,7 @@ import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { motion } from "framer-motion"
+import { motion, AnimatePresence } from "framer-motion"
 import { 
   Brain, 
   AlertTriangle, 
@@ -24,6 +24,8 @@ import {
 } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 import { cn } from "@/lib/utils"
+
+const JIRA_BASE_URL = "https://sharanhitam.atlassian.net"
 
 const mockAnalyses = [
   {
@@ -322,13 +324,16 @@ export default function History() {
                       </motion.tr>
                       
                       {/* Expanded Row */}
-                      <motion.tr
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: "auto" }}
-                        exit={{ opacity: 0, height: 0 }}
-                      >
-                        <td colSpan={7} className="px-6 pb-6" style={{ display: expandedId === analysis.id ? "table-cell" : "none" }}>
-                          <div className="bg-muted/30 rounded-lg p-4 mt-2 border-t">
+                      <AnimatePresence>
+                        {expandedId === analysis.id && (
+                          <motion.tr
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: "auto" }}
+                            exit={{ opacity: 0, height: 0 }}
+                            transition={{ duration: 0.2 }}
+                          >
+                            <td colSpan={7} className="px-6 pb-6">
+                              <div className="bg-muted/30 rounded-lg p-4 mt-2 border-t">
                             <div className="grid gap-4 md:grid-cols-3">
                               <div className="md:col-span-2 space-y-3">
                                 <div>
@@ -349,7 +354,11 @@ export default function History() {
                                   </Button>
                                 </Link>
                                 {analysis.hasTicket && (
-                                  <Button variant="outline" className="w-full justify-start gap-2">
+                                  <Button
+                                    variant="outline"
+                                    className="w-full justify-start gap-2"
+                                    onClick={() => window.open(`${JIRA_BASE_URL}/browse/${analysis.ticketKey}`, "_blank")}
+                                  >
                                     <Ticket className="h-4 w-4" />
                                     View Ticket: {analysis.ticketKey}
                                   </Button>
@@ -366,7 +375,9 @@ export default function History() {
                             </div>
                           </div>
                         </td>
-                      </motion.tr>
+                          </motion.tr>
+                        )}
+                      </AnimatePresence>
                     </React.Fragment>
                   ))}
                 </tbody>
@@ -387,7 +398,6 @@ export default function History() {
   )
 }
 
-// Need to import missing components
 import { Input } from "@/components/ui/input"
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
 import { ExternalLink } from "lucide-react"
