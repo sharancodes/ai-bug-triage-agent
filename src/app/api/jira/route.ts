@@ -63,17 +63,11 @@ async function createJiraTicketViaRestApi(fields: {
   }
 
   if (fields.components?.length) {
-    issuePayload.fields = {
-      ...issuePayload.fields,
-      components: fields.components.map((c) => ({ name: c })),
-    }
+    ;(issuePayload.fields as Record<string, unknown>).components = fields.components.map((c) => ({ name: c }))
   }
 
   if (fields.environment) {
-    issuePayload.fields = {
-      ...issuePayload.fields,
-      environment: buildDescription(fields.environment),
-    }
+    ;(issuePayload.fields as Record<string, unknown>).environment = buildDescription(fields.environment)
   }
 
   // Add Epic link if provided (Jira Software)
