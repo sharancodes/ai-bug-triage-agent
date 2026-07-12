@@ -3,71 +3,92 @@ import { NextRequest, NextResponse } from "next/server"
 
 export const dynamic = "force-dynamic"
 
-const JIRA_BASE_URL = "https://sharanhitam.atlassian.net"
+// Use settings from DB, fallback to env vars or hardcoded default
+const DEFAULT_JIRA_URL = "https://sharanhitam.atlassian.net"
 
-async function createJiraTicket(fields: {
-  project: string
+function priorityToJiraName(priority: string): string {
+  const map: Record<string, string> = {
+    P0: "Highest",
+    P1: "High",
+    P2: "Medium",
+    P3: "Low",
+    Critical: "Highest",
+    High: "High",
+    Medium: "Medium",
+    Low: "Low",
+  }
+  return map[priority] ?? "Medium"
+}
+
+function buildDescription(description: string): object {
+  // Wrap plain text in Jira ADF (Atlassian Document Format)
+  if (!description) {
+    return {
+      type: "doc",
+      version: 1,
+      content: [{ type: "paragraph", content: [] }],
+    }
+  }
+  return {
+    type: "doc",
+    version: 1,
+    content: description.split("\n").map((line) => ({
+      type: "paragraph",
+      content: [{ type: "text", text: line }],
+    })),
+  }
+}
+
+async function createJiraTicketViaRestApi(fields: {
+  projectKey: string
   issueType: string
   summary: string
   description: string
   priority: string
   labels?: string[]
   components?: string[]
-  assignee?: string
-  epic?: string
+  epicName?: string
   storyPoints?: number
   environment?: string
-}, jiraEmail: string, jiraApiToken: string) {
-  const url = `${JIRA_BASE_URL}/rest/api/3/issue`
-
-  const priorityMap: Record<string, string> = {
-    "P0": "Highest",
-    "P1": "High",
-    "P2": "Medium",
-    "P3": "Low",
-  }
-
+}, jiraEmail: string, jiraApiToken: string, jiraBaseUrl: string) {
   const issuePayload: Record<string, unknown> = {
     fields: {
-      project: {
-        key: fields.project,
-      },
+      project: { key: fields.projectKey },
       summary: fields.summary,
-      description: {
-        type: "doc",
-        version: 1,
-        content: [
-          {
-            type: "paragraph",
-            content: fields.description
-              ? [{ type: "text", text: fields.description }]
-              : [],
-          },
-        ],
-      },
-      issuetype: {
-        name: fields.issueType || "Bug",
-      },
-      priority: {
-        name: priorityMap[fields.priority] || "Medium",
-      },
+      description: buildDescription(fields.description),
+      issuetype: { name: fields.issueType || "Bug" },
+      priority: { name: priorityToJiraName(fields.priority) },
       labels: fields.labels || [],
     },
   }
 
   if (fields.components?.length) {
-    ;(issuePayload.fields as Record<string, unknown>).components = fields.components.map((c) => ({ name: c }))
-  }
-
-  if (fields.environment) {
-    ;(issuePayload.fields as Record<string, unknown>).environment = {
-      type: "doc",
-      version: 1,
-      content: [{ type: "paragraph", content: [{ type: "text", text: fields.environment }] }],
+    issuePayload.fields = {
+      ...issuePayload.fields,
+      components: fields.components.map((c) => ({ name: c })),
     }
   }
 
-  const response = await fetch(url, {
+  if (fields.environment) {
+    issuePayload.fields = {
+      ...issuePayload.fields,
+      environment: buildDescription(fields.environment),
+    }
+  }
+
+  // Add Epic link if provided (Jira Software)
+  if (fields.epicName) {
+    // We'll create the epic first, then link it — or just set the Epic Link custom field
+    // For simplicity: set Epic Link custom field by name
+    ;(issuePayload.fields as Record<string, unknown>).customfield_10011 = fields.epicName
+  }
+
+  // Add Story Points (customfield_10016 is common for Story Points in Jira Software)
+  if (typeof fields.storyPoints === "number") {
+    ;(issuePayload.fields as Record<string, unknown>).customfield_10016 = fields.storyPoints
+  }
+
+  const response = await fetch(`${jiraBaseUrl}/rest/api/3/issue`, {
     method: "POST",
     headers: {
       "Authorization": `Basic ${Buffer.from(`${jiraEmail}:${jiraApiToken}`).toString("base64")}`,
@@ -78,11 +99,56 @@ async function createJiraTicket(fields: {
   })
 
   if (!response.ok) {
-    const error = await response.text()
-    throw new Error(`Jira API error ${response.status}: ${error}`)
+    const errorText = await response.text()
+    throw new Error(`Jira API error ${response.status}: ${errorText}`)
   }
 
   return response.json()
+}
+
+async function getOrCreateEpic(jiraEmail: string, jiraApiToken: string, jiraBaseUrl: string, epicName: string) {
+  // Search for existing epic by name
+  const searchRes = await fetch(
+    `${jiraBaseUrl}/rest/api/3/search?jql=${encodeURIComponent(`project IS NOT EMPTY AND issuetype = Epic AND summary ~ "${epicName}" MAXResults 1`)}`,
+    {
+      headers: {
+        "Authorization": `Basic ${Buffer.from(`${jiraEmail}:${jiraApiToken}`).toString("base64")}`,
+        "Accept": "application/json",
+      },
+    }
+  )
+
+  if (searchRes.ok) {
+    const data = await searchRes.json()
+    if (data.issues?.length > 0) {
+      return data.issues[0].key
+    }
+  }
+
+  // Create new epic
+  const epicRes = await fetch(`${jiraBaseUrl}/rest/api/3/issue`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Basic ${Buffer.from(`${jiraEmail}:${jiraApiToken}`).toString("base64")}`,
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+    },
+    body: JSON.stringify({
+      fields: {
+        project: { key: "PROJ" }, // default project for epic creation
+        summary: epicName,
+        issuetype: { name: "Epic" },
+      },
+    }),
+  })
+
+  if (!epicRes.ok) {
+    const err = await epicRes.text()
+    throw new Error(`Failed to create Epic: ${err}`)
+  }
+
+  const epic = await epicRes.json()
+  return epic.key
 }
 
 export async function POST(request: NextRequest) {
@@ -103,41 +169,76 @@ export async function POST(request: NextRequest) {
       environment,
     } = body
 
-    if (!analysisId || !project || !summary) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
+    if (!project || !summary) {
+      return NextResponse.json({ error: "Missing required fields: project, summary" }, { status: 400 })
     }
 
-    const analysis = await prisma.analysis.findUnique({ where: { id: analysisId } })
-    if (!analysis) {
-      return NextResponse.json({ error: "Analysis not found" }, { status: 404 })
-    }
-
+    // Fetch settings from DB
     const settings = await prisma.settings.findUnique({ where: { id: 1 } })
+
+    const jiraBaseUrl = settings?.jiraUrl || DEFAULT_JIRA_URL
+    const jiraEmail = settings?.jiraEmail || process.env.JIRA_EMAIL
+    const jiraApiToken = settings?.jiraApiToken || process.env.JIRA_API_TOKEN
+    const defaultProject = settings?.defaultProject || project
 
     let ticketKey: string
     let jiraUrl: string
+    let createdViaApi = false
 
-    if (settings?.jiraEmail && settings?.jiraApiToken && settings?.jiraUrl) {
+    // Resolve Epic key if epic name is provided
+    let epicKey: string | undefined
+    if (epic) {
+      try {
+        epicKey = await getOrCreateEpic(
+          jiraEmail as string,
+          jiraApiToken as string,
+          jiraBaseUrl,
+          epic
+        )
+      } catch (epicError) {
+        console.warn("Epic resolution failed, skipping epic link:", epicError)
+      }
+    }
+
+    if (jiraEmail && jiraApiToken) {
       // Real Jira API call
       try {
-        const result = await createJiraTicket(
+        const result = await createJiraTicketViaRestApi(
           {
-            project,
+            projectKey: defaultProject,
             issueType: issueType || "Bug",
             summary,
-            description,
-            priority: priority || "P3",
-            labels,
+            description: description || "",
+            priority: priority || "P2",
+            labels: labels || ["bug", "ai-triage"],
             components,
-            epic,
-            storyPoints,
+            epicName: epic,
+            storyPoints: typeof storyPoints === "number" ? storyPoints : undefined,
             environment,
           },
-          settings.jiraEmail,
-          settings.jiraApiToken
+          jiraEmail,
+          jiraApiToken,
+          jiraBaseUrl
         )
         ticketKey = result.key
-        jiraUrl = `${JIRA_BASE_URL}/browse/${ticketKey}`
+        jiraUrl = `${jiraBaseUrl}/browse/${ticketKey}`
+        createdViaApi = true
+
+        // Link epic if resolved
+        if (epicKey && ticketKey) {
+          await fetch(`${jiraBaseUrl}/rest/api/3/issue/${ticketKey}`, {
+            method: "PUT",
+            headers: {
+              "Authorization": `Basic ${Buffer.from(`${jiraEmail}:${jiraApiToken}`).toString("base64")}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              fields: {
+                customfield_10011: epicKey, // Epic Link
+              },
+            }),
+          }).catch((e) => console.warn("Failed to link epic:", e))
+        }
       } catch (jiraError) {
         console.error("Jira API error:", jiraError)
         return NextResponse.json(
@@ -146,47 +247,55 @@ export async function POST(request: NextRequest) {
         )
       }
     } else {
-      // Fallback: create local record only (no real Jira)
-      ticketKey = `${project}-${Date.now().toString(36).toUpperCase()}`
-      jiraUrl = `${JIRA_BASE_URL}/browse/${ticketKey}`
+      // No credentials — create local record with mock key
+      ticketKey = `${defaultProject}-${Date.now().toString(36).toUpperCase()}`
+      jiraUrl = `${jiraBaseUrl}/browse/${ticketKey}`
     }
 
+    // Save to local DB
     const ticket = await prisma.jiraTicket.create({
       data: {
         key: ticketKey,
-        analysisId,
-        project,
+        analysisId: analysisId || null,
+        project: defaultProject,
         issueType: issueType || "Bug",
         summary,
-        description,
+        description: description || "",
         priority: priority || "Medium",
         labels: JSON.stringify(labels || []),
         components: JSON.stringify(components || []),
-        assignee,
-        epic,
-        storyPoints: storyPoints ? parseInt(storyPoints.toString()) : null,
-        environment,
+        assignee: assignee || null,
+        epic: epicKey || epic || null,
+        storyPoints: typeof storyPoints === "number" ? storyPoints : null,
+        environment: environment || null,
         attachments: "[]",
-        status: "Created",
+        status: createdViaApi ? "Created" : "Local Only",
       },
     })
 
-    await prisma.analysis.update({
-      where: { id: analysisId },
-      data: {
-        jiraPreview: JSON.stringify({ ...JSON.parse(analysis.jiraPreview || "{}"), ticketKey, jiraUrl }),
-      },
-    })
+    // Update analysis with ticket info
+    if (analysisId) {
+      await prisma.analysis.update({
+        where: { id: analysisId },
+        data: {
+          jiraPreview: JSON.stringify({ ticketKey, jiraUrl, createdViaApi }),
+        },
+      }).catch(() => {/* analysis might not exist */})
+    }
 
     return NextResponse.json({
       success: true,
       ticketKey,
       url: jiraUrl,
-      ticket,
+      createdViaApi,
+      ticketId: ticket.id,
     })
   } catch (error) {
     console.error("Jira creation error:", error)
-    return NextResponse.json({ error: "Failed to create Jira ticket" }, { status: 500 })
+    return NextResponse.json(
+      { error: `Internal error: ${(error as Error).message}` },
+      { status: 500 }
+    )
   }
 }
 

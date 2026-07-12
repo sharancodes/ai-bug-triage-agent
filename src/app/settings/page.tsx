@@ -43,7 +43,7 @@ import { cn } from "@/lib/utils"
 
 const defaultSettings = {
   jiraUrl: "https://sharanhitam.atlassian.net",
-  jiraEmail: "dev@company.com",
+  jiraEmail: "your-email@domain.com",
   jiraApiToken: "",
   defaultProject: "PROJ",
   defaultSprint: "Sprint 1",
@@ -167,7 +167,7 @@ export default function SettingsPage() {
                       <Globe className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                       <Input
                         id="jiraUrl"
-                        placeholder="https://your-company.atlassian.net"
+                        placeholder="https://sharanhitam.atlassian.net"
                         value={settings.jiraUrl}
                         onChange={(e) => handleChange("jiraUrl", e.target.value)}
                         className="pl-10"
