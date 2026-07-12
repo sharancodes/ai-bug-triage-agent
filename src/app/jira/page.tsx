@@ -452,7 +452,7 @@ export default function JiraTickets() {
                               <span className="text-sm">{ticket.assignee || "Unassigned"}</span>
                             </div>
                           </td>
-                          <td className="px-6 py-4 text-sm text-muted-foreground">
+                          <td className="px-6 py-4 text-sm text-muted-foreground" suppressHydrationWarning>
                             {formatDistanceToNow(new Date(ticket.createdAt), { addSuffix: true })}
                           </td>
                           <td className="px-6 py-4 text-right pr-6">

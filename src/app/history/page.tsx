@@ -301,7 +301,7 @@ export default function History() {
                             {analysis.hasTicket ? "Ticket Created" : "No Ticket"}
                           </Badge>
                         </td>
-                        <td className="px-6 py-4 text-sm text-muted-foreground">
+                        <td className="px-6 py-4 text-sm text-muted-foreground" suppressHydrationWarning>
                           {formatDistanceToNow(analysis.time, { addSuffix: true })}
                         </td>
                         <td className="px-6 py-4 text-right pr-6">

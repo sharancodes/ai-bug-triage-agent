@@ -288,7 +288,7 @@ export default function Dashboard() {
                           <p className="text-sm text-muted-foreground mt-1 font-mono">{analysis.file}</p>
                         </div>
                         <div className="flex items-center gap-4 text-sm text-muted-foreground flex-shrink-0">
-                          <span>{formatDistanceToNow(analysis.time, { addSuffix: true })}</span>
+                          <span suppressHydrationWarning>{formatDistanceToNow(analysis.time, { addSuffix: true })}</span>
                           <Badge variant={analysis.status === "completed" ? "success" : "outline"}>
                             {analysis.status}
                           </Badge>
