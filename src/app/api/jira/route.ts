@@ -70,12 +70,8 @@ async function createJiraTicketViaRestApi(fields: {
     ;(issuePayload.fields as Record<string, unknown>).environment = buildDescription(fields.environment)
   }
 
-  // Add Epic link if provided (Jira Software)
-  if (fields.epicName) {
-    // We'll create the epic first, then link it — or just set the Epic Link custom field
-    // For simplicity: set Epic Link custom field by name
-    ;(issuePayload.fields as Record<string, unknown>).customfield_10011 = fields.epicName
-  }
+  // Remove direct epic name→customfield assignment (customfield_10011 expects an epic KEY, not name)
+  // Epic resolution is handled in POST after ticket creation
 
   // Add Story Points (customfield_10016 is common for Story Points in Jira Software)
   if (typeof fields.storyPoints === "number") {
@@ -100,7 +96,7 @@ async function createJiraTicketViaRestApi(fields: {
   return response.json()
 }
 
-async function getOrCreateEpic(jiraEmail: string, jiraApiToken: string, jiraBaseUrl: string, epicName: string) {
+async function getOrCreateEpic(jiraEmail: string, jiraApiToken: string, jiraBaseUrl: string, projectKey: string, epicName: string) {
   // Search for existing epic by name
   const searchRes = await fetch(
     `${jiraBaseUrl}/rest/api/3/search?jql=${encodeURIComponent(`project IS NOT EMPTY AND issuetype = Epic AND summary ~ "${epicName}" MAXResults 1`)}`,
@@ -129,7 +125,7 @@ async function getOrCreateEpic(jiraEmail: string, jiraApiToken: string, jiraBase
     },
     body: JSON.stringify({
       fields: {
-        project: { key: "PROJ" }, // default project for epic creation
+        project: { key: projectKey },
         summary: epicName,
         issuetype: { name: "Epic" },
       },
@@ -190,6 +186,7 @@ export async function POST(request: NextRequest) {
           jiraEmail as string,
           jiraApiToken as string,
           jiraBaseUrl,
+          projectKey,
           epic
         )
       } catch (epicError) {
