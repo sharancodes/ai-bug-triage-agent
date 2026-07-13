@@ -296,11 +296,53 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET() {
-  const tickets = await prisma.jiraTicket.findMany({
-    orderBy: { createdAt: "desc" },
-    take: 50,
-    include: { analysis: true },
-  })
-  return NextResponse.json(tickets)
+export async function GET(request: NextRequest) {
+  try {
+    const settings = await prisma.settings.findUnique({ where: { id: 1 } })
+    const jiraBaseUrl = settings?.jiraUrl || DEFAULT_JIRA_URL
+    const jiraEmail = settings?.jiraEmail || process.env.JIRA_EMAIL
+    const jiraApiToken = settings?.jiraApiToken || process.env.JIRA_API_TOKEN
+
+    if (!jiraEmail || !jiraApiToken) {
+      return NextResponse.json({ error: "Jira credentials not configured" }, { status: 401 })
+    }
+
+    const authHeader = `Basic ${Buffer.from(`${jiraEmail}:${jiraApiToken}`).toString("base64")}`
+    const headers = { "Authorization": authHeader, "Accept": "application/json" }
+
+    const projectKey = request.nextUrl.searchParams.get("project") || settings?.defaultProject || "SCRUM"
+
+    // Fetch all in parallel: projects, issuetypes, priorities, project details, epics
+    const [projectsRes, issueTypesRes, prioritiesRes, projectRes, epicsRes] = await Promise.all([
+      fetch(`${jiraBaseUrl}/rest/api/3/project`, { headers }),
+      fetch(`${jiraBaseUrl}/rest/api/3/issuetype`, { headers }),
+      fetch(`${jiraBaseUrl}/rest/api/3/priority`, { headers }),
+      fetch(`${jiraBaseUrl}/rest/api/3/project/${projectKey}`, { headers }),
+      fetch(`${jiraBaseUrl}/rest/api/3/search?jql=${encodeURIComponent(`project = "${projectKey}" AND issuetype = Epic ORDER BY rank ASC`)}&maxResults=50&fields=key,summary,status`, { headers }),
+    ])
+
+    const projects = projectsRes.ok ? await projectsRes.json() : []
+    const issueTypes = issueTypesRes.ok ? await issueTypesRes.json() : []
+    const priorities = prioritiesRes.ok ? await prioritiesRes.json() : []
+    const project = projectRes.ok ? await projectRes.json() : {}
+    const epicsData = epicsRes.ok ? await epicsRes.json() : { issues: [] }
+
+    // Extract components from project if available
+    const components = Array.isArray(project.components) ? project.components.map((c: { name: string }) => c.name) : []
+
+    // Extract users/members from project leads
+    const users = project.lead ? [{ name: project.lead.displayName, email: project.lead.emailAddress || "" }] : []
+
+    return NextResponse.json({
+      projects: Array.isArray(projects) ? projects.map((p: { key: string; name: string }) => ({ key: p.key, name: p.name })) : [],
+      issueTypes: Array.isArray(issueTypes) ? issueTypes.filter((t: { subtask: boolean }) => !t.subtask).map((t: { id: string; name: string }) => ({ id: t.id, name: t.name })) : [],
+      priorities: Array.isArray(priorities) ? priorities.map((p: { id: string; name: string }) => ({ id: p.id, name: p.name })) : [],
+      components,
+      epics: epicsData.issues.map((e: { key: string; fields: { summary: string; status: { name: string } } }) => ({ key: e.key, name: e.fields.summary, status: e.fields.status?.name })),
+      defaultProject: projectKey,
+    })
+  } catch (error) {
+    console.error("Jira metadata error:", error)
+    return NextResponse.json({ error: (error as Error).message }, { status: 500 })
+  }
 }

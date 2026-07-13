@@ -173,6 +173,14 @@ export default function AnalyzeBug() {
   const [jiraForm, setJiraForm] = useState<Record<string, unknown> | null>(null)
   const [ticketCreated, setTicketCreated] = useState<{ key: string; url: string } | null>(null)
   const [creatingTicket, setCreatingTicket] = useState(false)
+  const [jiraOptions, setJiraOptions] = useState<{
+    projects: { key: string; name: string }[]
+    issueTypes: { id: string; name: string }[]
+    priorities: { id: string; name: string }[]
+    epics: { key: string; name: string; status?: string }[]
+    components: string[]
+    users: { name: string; email: string }[]
+  } | null>(null)
   
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -276,6 +284,13 @@ export default function AnalyzeBug() {
       setAnalysisResult(data)
       setJiraForm(data.jiraPreview as Record<string, unknown>)
       setStage("results")
+      // Fetch Jira metadata for dropdowns
+      fetch("/api/jira")
+        .then((r) => r.json())
+        .then((meta) => {
+          if (!meta.error) setJiraOptions(meta)
+        })
+        .catch(() => { /* metadata optional */ })
     } catch (err) {
       console.error("Analysis error:", err)
       alert("Analysis failed. Please check your OpenRouter API key and try again.")
@@ -812,6 +827,7 @@ export default function AnalyzeBug() {
                     onChange={setJiraForm}
                     onSubmit={handleCreateTicket}
                     loading={creatingTicket}
+                    options={jiraOptions || undefined}
                   />
                 )}
               </CardContent>
@@ -940,23 +956,45 @@ function DuplicateTicketCard({ ticket, isExpanded, onToggle }: { ticket: any, is
   )
 }
 
-function JiraPreviewForm({ formData, onChange, onSubmit, loading }: { formData: any, onChange: any, onSubmit: () => void, loading?: boolean }) {
+function JiraPreviewForm({ formData, onChange, onSubmit, loading, options }: {
+  formData: any,
+  onChange: any,
+  onSubmit: () => void,
+  loading?: boolean,
+  options?: {
+    projects: { key: string; name: string }[]
+    issueTypes: { id: string; name: string }[]
+    priorities: { id: string; name: string }[]
+    epics: { key: string; name: string; status?: string }[]
+    components: string[]
+    users: { name: string; email: string }[]
+  }
+}) {
   return (
     <form onSubmit={(e) => { e.preventDefault(); onSubmit() }} className="space-y-4">
-      <div className="space-y-2">
-        <Label>Project</Label>
-        <Input value={formData.project} onChange={(e) => onChange({...formData, project: e.target.value})} />
-      </div>
-      <div className="space-y-2">
-        <Label>Issue Type</Label>
-        <Select value={formData.issueType} onValueChange={(v) => onChange({...formData, issueType: v})}>
-          <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="Bug">Bug</SelectItem>
-            <SelectItem value="Task">Task</SelectItem>
-            <SelectItem value="Story">Story</SelectItem>
-          </SelectContent>
-        </Select>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label>Project</Label>
+          <Select value={formData.project} onValueChange={(v) => onChange({...formData, project: v})}>
+            <SelectTrigger><SelectValue placeholder="Select project" /></SelectTrigger>
+            <SelectContent>
+              {(options?.projects || []).map((p) => (
+                <SelectItem key={p.key} value={p.key}>{p.name} ({p.key})</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label>Issue Type</Label>
+          <Select value={formData.issueType} onValueChange={(v) => onChange({...formData, issueType: v})}>
+            <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
+            <SelectContent>
+              {(options?.issueTypes || []).map((t) => (
+                <SelectItem key={t.id} value={t.name}>{t.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
       <div className="space-y-2">
         <Label>Summary</Label>
@@ -972,22 +1010,37 @@ function JiraPreviewForm({ formData, onChange, onSubmit, loading }: { formData: 
           <Select value={formData.priority} onValueChange={(v) => onChange({...formData, priority: v})}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="P0">P0 - Critical</SelectItem>
-              <SelectItem value="P1">P1 - High</SelectItem>
-              <SelectItem value="P2">P2 - Medium</SelectItem>
-              <SelectItem value="P3">P3 - Low</SelectItem>
+              {(options?.priorities || []).map((p) => (
+                <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
         <div className="space-y-2">
           <Label>Assignee</Label>
-          <Input value={formData.assignee} onChange={(e) => onChange({...formData, assignee: e.target.value})} />
+          <Select value={formData.assignee || ""} onValueChange={(v) => onChange({...formData, assignee: v})}>
+            <SelectTrigger><SelectValue placeholder="Unassigned" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">Unassigned</SelectItem>
+              {(options?.users || []).map((u) => (
+                <SelectItem key={u.email || u.name} value={u.email || u.name}>{u.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label>Epic</Label>
-          <Input value={formData.epic} onChange={(e) => onChange({...formData, epic: e.target.value})} />
+          <Select value={formData.epic || ""} onValueChange={(v) => onChange({...formData, epic: v})}>
+            <SelectTrigger><SelectValue placeholder="No epic" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">None</SelectItem>
+              {(options?.epics || []).map((e) => (
+                <SelectItem key={e.key} value={e.name}>{e.name} ({e.key})</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <div className="space-y-2">
           <Label>Story Points</Label>
@@ -995,18 +1048,26 @@ function JiraPreviewForm({ formData, onChange, onSubmit, loading }: { formData: 
         </div>
       </div>
       <div className="space-y-2">
-        <Label>Labels</Label>
+        <Label>Labels <span className="text-xs text-muted-foreground">(comma-separated)</span></Label>
         <Input value={(formData.labels || []).join(", ")} onChange={(e) => onChange({...formData, labels: e.target.value.split(",").map(s => s.trim()).filter(Boolean)})} />
       </div>
       <div className="space-y-2">
         <Label>Components</Label>
-        <Input value={(formData.components || []).join(", ")} onChange={(e) => onChange({...formData, components: e.target.value.split(",").map(s => s.trim()).filter(Boolean)})} />
+        <Select value={formData.components?.[0] || ""} onValueChange={(v) => onChange({...formData, components: v ? [v] : []})}>
+          <SelectTrigger><SelectValue placeholder="Select component" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="">None</SelectItem>
+            {(options?.components || []).map((c) => (
+              <SelectItem key={c} value={c}>{c}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
       <div className="space-y-2">
         <Label>Environment</Label>
         <Input value={formData.environment} onChange={(e) => onChange({...formData, environment: e.target.value})} />
       </div>
-      
+
       <Button type="submit" className="w-full" size="lg" disabled={loading}>
         {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Ticket className="h-4 w-4 mr-2" />}
         {loading ? "Creating..." : "Create Jira Ticket"}
