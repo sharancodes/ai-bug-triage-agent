@@ -68,6 +68,7 @@ interface JiraTicket {
 export default function JiraTickets() {
   const [tickets, setTickets] = React.useState<JiraTicket[]>([])
   const [loading, setLoading] = React.useState(true)
+  const [error, setError] = React.useState<string | null>(null)
   const [search, setSearch] = React.useState("")
   const [statusFilter, setStatusFilter] = React.useState("all")
   const [priorityFilter, setPriorityFilter] = React.useState("all")
@@ -86,14 +87,17 @@ export default function JiraTickets() {
 
   const fetchTickets = React.useCallback(async () => {
     setLoading(true)
+    setError(null)
     try {
       const res = await fetch("/api/jira")
-      if (res.ok) {
-        const data = await res.json()
-        setTickets(data)
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error || `Server error ${res.status}`)
+        return
       }
+      setTickets(data)
     } catch (e) {
-      console.error("Failed to fetch tickets:", e)
+      setError((e as Error).message || "Network error")
     } finally {
       setLoading(false)
     }
@@ -157,6 +161,18 @@ export default function JiraTickets() {
   return (
     <main className="flex-1 ml-64 p-6 lg:ml-64 min-h-screen">
       <div className="max-w-7xl mx-auto space-y-6">
+        {/* Error Banner */}
+        {error && (
+          <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/20 text-red-500 text-sm flex items-start gap-2">
+            <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+            <div>
+              <strong>Failed to load tickets:</strong> {error}
+              <br />
+              <span className="text-xs opacity-75">Set JIRA_EMAIL, JIRA_API_TOKEN, and JIRA_BASE_URL in Vercel → Settings → Environment Variables.</span>
+            </div>
+          </div>
+        )}
+
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
