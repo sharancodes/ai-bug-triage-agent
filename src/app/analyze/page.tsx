@@ -1018,10 +1018,10 @@ function JiraPreviewForm({ formData, onChange, onSubmit, loading, options }: {
         </div>
         <div className="space-y-2">
           <Label>Assignee</Label>
-          <Select value={formData.assignee || ""} onValueChange={(v) => onChange({...formData, assignee: v})}>
+          <Select value={formData.assignee || "none"} onValueChange={(v) => onChange({...formData, assignee: v === "none" ? "" : v})}>
             <SelectTrigger><SelectValue placeholder="Unassigned" /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Unassigned</SelectItem>
+              <SelectItem value="none">Unassigned</SelectItem>
               {(options?.users || []).map((u) => (
                 <SelectItem key={u.email || u.name} value={u.email || u.name}>{u.name}</SelectItem>
               ))}
@@ -1032,10 +1032,10 @@ function JiraPreviewForm({ formData, onChange, onSubmit, loading, options }: {
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label>Epic</Label>
-          <Select value={formData.epic || ""} onValueChange={(v) => onChange({...formData, epic: v})}>
+          <Select value={formData.epic || "none"} onValueChange={(v) => onChange({...formData, epic: v === "none" ? "" : v})}>
             <SelectTrigger><SelectValue placeholder="No epic" /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="">None</SelectItem>
+              <SelectItem value="none">None</SelectItem>
               {(options?.epics || []).map((e) => (
                 <SelectItem key={e.key} value={e.name}>{e.name} ({e.key})</SelectItem>
               ))}
@@ -1053,10 +1053,10 @@ function JiraPreviewForm({ formData, onChange, onSubmit, loading, options }: {
       </div>
       <div className="space-y-2">
         <Label>Components</Label>
-        <Select value={formData.components?.[0] || ""} onValueChange={(v) => onChange({...formData, components: v ? [v] : []})}>
+        <Select value={formData.components?.[0] || "none"} onValueChange={(v) => onChange({...formData, components: v === "none" ? [] : [v]})}>
           <SelectTrigger><SelectValue placeholder="Select component" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="">None</SelectItem>
+            <SelectItem value="none">None</SelectItem>
             {(options?.components || []).map((c) => (
               <SelectItem key={c} value={c}>{c}</SelectItem>
             ))}
