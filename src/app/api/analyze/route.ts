@@ -39,22 +39,31 @@ export async function POST(request: NextRequest) {
 
     const analysis = await analyzeBugWithAI(rawInput, fileNames, openRouterApiKey, openRouterModel)
 
-    const saved = await prisma.analysis.create({
-      data: {
-        rootCause: analysis.rootCause,
-        reason: analysis.reason,
-        confidence: analysis.confidence,
-        severity: analysis.severity,
-        priority: analysis.priority,
-        estimatedTime: analysis.estimatedTime,
-        risk: analysis.risk,
-        suggestedFix: analysis.suggestedFix,
-        similarTickets: JSON.stringify(analysis.similarTickets),
-        jiraPreview: JSON.stringify(analysis.jiraPreview),
-      },
-    })
+    // Save to DB if available (graceful — works locally, skips on Vercel serverless)
+    let analysisId: string | null = null
+    try {
+      if (prisma) {
+        const saved = await prisma.analysis.create({
+          data: {
+            rootCause: analysis.rootCause,
+            reason: analysis.reason,
+            confidence: analysis.confidence,
+            severity: analysis.severity,
+            priority: analysis.priority,
+            estimatedTime: analysis.estimatedTime,
+            risk: analysis.risk,
+            suggestedFix: analysis.suggestedFix,
+            similarTickets: JSON.stringify(analysis.similarTickets),
+            jiraPreview: JSON.stringify(analysis.jiraPreview),
+          },
+        })
+        analysisId = saved.id
+      }
+    } catch (dbErr) {
+      console.warn("DB save skipped:", dbErr)
+    }
 
-    return NextResponse.json({ ...analysis, id: saved.id })
+    return NextResponse.json({ ...analysis, id: analysisId || crypto.randomUUID() })
   } catch (error) {
     console.error("Analysis error:", error)
     return NextResponse.json({ error: (error as Error).message || "Analysis failed" }, { status: 500 })
@@ -163,10 +172,15 @@ Rules:
 }
 
 export async function GET() {
-  const analyses = await prisma.analysis.findMany({
-    orderBy: { createdAt: "desc" },
-    take: 50,
-    include: { jiraTicket: true },
-  })
-  return NextResponse.json(analyses)
+  try {
+    if (!prisma) return NextResponse.json([])
+    const analyses = await prisma.analysis.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 50,
+      include: { jiraTicket: true },
+    })
+    return NextResponse.json(analyses)
+  } catch {
+    return NextResponse.json([])
+  }
 }

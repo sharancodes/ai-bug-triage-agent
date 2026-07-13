@@ -5,6 +5,7 @@ export const dynamic = "force-dynamic"
 
 export async function GET() {
   try {
+    if (!prisma) return NextResponse.json({})
     const settings = await prisma.settings.findUnique({ where: { id: 1 } })
     if (!settings) {
       return NextResponse.json({})
@@ -19,13 +20,14 @@ export async function GET() {
 
 export async function PUT(request: NextRequest) {
   try {
+    if (!prisma) return NextResponse.json({ error: "Database not available" }, { status: 503 })
     const body = await request.json()
     const settings = await prisma.settings.upsert({
       where: { id: 1 },
       update: body,
       create: { id: 1, ...body }
     })
-    const { jiraApiToken, ...safeSettings } = settings
+    const { jiraApiToken, openRouterApiKey, ...safeSettings } = settings
     return NextResponse.json(safeSettings)
   } catch (error) {
     console.error("Settings update error:", error)
