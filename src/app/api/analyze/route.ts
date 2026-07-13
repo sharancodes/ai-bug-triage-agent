@@ -12,7 +12,6 @@ export async function POST(request: NextRequest) {
     const files = formData.getAll("files") as File[]
     const text = formData.get("text") as string
 
-    // Parse uploaded files
     let fileContents = ""
     const fileNames: string[] = []
 
@@ -30,10 +29,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No input provided" }, { status: 400 })
     }
 
-    // Real AI analysis via OpenRouter
     const analysis = await analyzeBugWithAI(rawInput, fileNames)
 
-    // Save to database
     const saved = await prisma.analysis.create({
       data: {
         rootCause: analysis.rootCause,
@@ -122,13 +119,11 @@ Rules:
     throw new Error("No response from OpenRouter")
   }
 
-  // Extract JSON from response (model might wrap it in markdown code blocks)
   let jsonStr = content.trim()
   const jsonMatch = jsonStr.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/)
   if (jsonMatch) {
     jsonStr = jsonMatch[1]
   } else {
-    // Try to find JSON object in the string
     const start = jsonStr.indexOf("{")
     const end = jsonStr.lastIndexOf("}")
     if (start !== -1 && end !== -1) {
@@ -136,9 +131,13 @@ Rules:
     }
   }
 
-  let result = JSON.parse(jsonStr)
+  let result: Record<string, unknown>
+  try {
+    result = JSON.parse(jsonStr)
+  } catch {
+    throw new Error(`Failed to parse AI response as JSON. Raw response:\n${content.substring(0, 500)}`)
+  }
 
-  // Fallback values for safety
   if (!result.rootCause) result.rootCause = "Analysis completed"
   if (!result.confidence) result.confidence = 75
   if (!result.severity) result.severity = "Medium"
@@ -157,9 +156,8 @@ Rules:
     }
   }
 
-  // Inject file names into Jira attachments
   if (result.jiraPreview) {
-    result.jiraPreview.attachments = fileNames.length > 0 ? fileNames : ["stacktrace.log"]
+    ;(result.jiraPreview as Record<string, unknown>).attachments = fileNames.length > 0 ? fileNames : ["stacktrace.log"]
   }
 
   return result
