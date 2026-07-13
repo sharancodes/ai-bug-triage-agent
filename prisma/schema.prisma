@@ -6,25 +6,25 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
 model Analysis {
-  id            String   @id @default(cuid())
-  rootCause     String
-  reason        String
-  confidence    Int
-  severity      String
-  priority      String
-  estimatedTime String?
-  risk          String?
-  suggestedFix  String?
-  similarTickets String?
-  jiraPreview   String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  jiraTicket    JiraTicket?
+  id             String       @id @default(cuid())
+  rootCause      String       @db.Text
+  reason         String       @db.Text
+  confidence     Int
+  severity       String
+  priority       String
+  estimatedTime  String?      @db.Text
+  risk           String?       @db.Text
+  suggestedFix   String?       @db.Text
+  similarTickets String?       @db.Text
+  jiraPreview    String?       @db.Text
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  jiraTicket     JiraTicket?
 }
 
 model JiraTicket {
@@ -33,8 +33,8 @@ model JiraTicket {
   analysisId  String   @unique
   project     String
   issueType   String
-  summary     String
-  description String?
+  summary     String   @db.Text
+  description String?  @db.Text
   priority    String
   labels      String?
   components  String?
@@ -50,15 +50,15 @@ model JiraTicket {
 }
 
 model Settings {
-  id            Int      @id @default(1)
-  jiraUrl       String?
-  jiraEmail     String?
-  jiraApiToken  String?
-  defaultProject String?
-  defaultSprint  String?
-  defaultLabels  String?
+  id               Int     @id @default(1)
+  jiraUrl          String?
+  jiraEmail        String?
+  jiraApiToken     String?
+  defaultProject   String?
+  defaultSprint    String?
+  defaultLabels    String?
   defaultComponents String?
-  defaultAssignee String?
+  defaultAssignee  String?
   // OpenRouter AI
   openRouterApiKey String?
   openRouterModel  String?
@@ -68,5 +68,5 @@ model Settings {
   duplicateDetection  Boolean @default(true)
   attachRawLogs      Boolean @default(true)
   notifyAssignee     Boolean @default(true)
-  updatedAt     DateTime @updatedAt
+  updatedAt          DateTime @updatedAt
 }
