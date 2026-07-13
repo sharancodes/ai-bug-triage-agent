@@ -173,7 +173,10 @@ export async function POST(request: NextRequest) {
     const jiraBaseUrl = settings?.jiraUrl || DEFAULT_JIRA_URL
     const jiraEmail = settings?.jiraEmail || process.env.JIRA_EMAIL
     const jiraApiToken = settings?.jiraApiToken || process.env.JIRA_API_TOKEN
-    const defaultProject = settings?.defaultProject || project
+    const defaultProject = settings?.defaultProject || "SCRUM"
+
+    // Use the project from the request body, or fall back to the configured default
+    const projectKey = project || defaultProject
 
     let ticketKey: string
     let jiraUrl: string
@@ -199,7 +202,7 @@ export async function POST(request: NextRequest) {
       try {
         const result = await createJiraTicketViaRestApi(
           {
-            projectKey: defaultProject,
+            projectKey: projectKey,
             issueType: issueType || "Bug",
             summary,
             description: description || "",
@@ -242,7 +245,7 @@ export async function POST(request: NextRequest) {
       }
     } else {
       // No credentials — create local record with mock key
-      ticketKey = `${defaultProject}-${Date.now().toString(36).toUpperCase()}`
+      ticketKey = `${projectKey}-${Date.now().toString(36).toUpperCase()}`
       jiraUrl = `${jiraBaseUrl}/browse/${ticketKey}`
     }
 
@@ -251,7 +254,7 @@ export async function POST(request: NextRequest) {
       data: {
         key: ticketKey,
         analysisId: analysisId || null,
-        project: defaultProject,
+        project: projectKey,
         issueType: issueType || "Bug",
         summary,
         description: description || "",

@@ -194,7 +194,7 @@ export default function AnalyzeBug() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           analysisId: analysisResult.id,
-          project: jiraData.project || "PROJ",
+          project: jiraData.project || "SCRUM",
           issueType: jiraData.issueType || "Bug",
           summary: jiraData.summary || analysisResult.rootCause,
           description: jiraData.description || analysisResult.reason,
