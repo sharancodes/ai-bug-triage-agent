@@ -7,58 +7,57 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
+import { Switch } from "@/components/ui/switch"
 import { motion } from "framer-motion"
 import { 
-  Settings, 
-  Save, 
-  CheckCircle, 
-  AlertCircle,
-  Eye,
-  EyeOff,
-  Globe,
-  Mail,
-  Key,
-  Briefcase,
-  Calendar,
-  Tag,
-  Box,
-  User,
-  Shield,
-  Loader2,
-  Info,
-  Bug,
-  Database,
-  Palette,
-  Cpu,
-  Link2,
-  Code,
-  Triangle,
-  Zap,
-  Brain,
-  Search,
-  Ticket
+  Settings, Save, CheckCircle, AlertCircle, Eye, EyeOff,
+  Globe, Mail, Key, Briefcase, Tag, Box, User, Shield,
+  Loader2, Info, Bug, Database, Palette, Cpu, Link2,
+  Code, Triangle, Zap, Brain, Search, Ticket, Bot
 } from "lucide-react"
 import { toast } from "@/components/ui/use-toast"
 import { cn } from "@/lib/utils"
 
 const defaultSettings = {
   jiraUrl: "https://sharanhitam.atlassian.net",
-  jiraEmail: "your-email@domain.com",
+  jiraEmail: "",
   jiraApiToken: "",
-  defaultProject: "PROJ",
+  defaultProject: "SCRUM",
   defaultSprint: "Sprint 1",
-  defaultLabels: "bug,backend,ai-triage",
-  defaultComponents: "Backend,API",
-  defaultAssignee: "unassigned",
+  defaultLabels: "bug,ai-triage",
+  defaultComponents: "Backend",
+  defaultAssignee: "",
+  openRouterApiKey: "",
+  openRouterModel: "nvidia/nemotron-3-ultra-550b-a55b",
+  autoCreateTickets: false,
+  includeReasoning: true,
+  duplicateDetection: true,
+  attachRawLogs: true,
+  notifyAssignee: true,
 }
 
 export default function SettingsPage() {
   const [settings, setSettings] = React.useState(defaultSettings)
   const [showToken, setShowToken] = React.useState(false)
+  const [showOpenRouterKey, setShowOpenRouterKey] = React.useState(false)
+  const [loading, setLoading] = React.useState(true)
   const [saving, setSaving] = React.useState(false)
   const [saved, setSaved] = React.useState(false)
   const [testResult, setTestResult] = React.useState<{ success: boolean; message: string } | null>(null)
   const [testing, setTesting] = React.useState(false)
+
+  // Load existing settings from DB on mount
+  React.useEffect(() => {
+    fetch("/api/settings")
+      .then(r => r.json())
+      .then(data => {
+        if (data && Object.keys(data).length > 0) {
+          setSettings(prev => ({ ...prev, ...data }))
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
 
   const handleChange = (field: string, value: string) => {
     setSettings(prev => ({ ...prev, [field]: value }))
@@ -138,14 +137,18 @@ export default function SettingsPage() {
         )}
 
         <Tabs defaultValue="jira" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="jira">
               <Globe className="h-4 w-4 mr-2" />
-              Jira Integration
+              Jira
+            </TabsTrigger>
+            <TabsTrigger value="ai">
+              <Bot className="h-4 w-4 mr-2" />
+              AI / OpenRouter
             </TabsTrigger>
             <TabsTrigger value="defaults">
               <Settings className="h-4 w-4 mr-2" />
-              Default Values
+              Defaults
             </TabsTrigger>
             <TabsTrigger value="advanced">
               <Shield className="h-4 w-4 mr-2" />
@@ -265,6 +268,89 @@ export default function SettingsPage() {
             </Card>
           </TabsContent>
 
+          {/* AI / OpenRouter Tab */}
+          <TabsContent value="ai" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Bot className="h-5 w-5" />
+                  OpenRouter AI Configuration
+                </CardTitle>
+                <CardDescription>
+                  Connect your OpenRouter account to power AI bug analysis. Get your API key from{" "}
+                  <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                    openrouter.ai/keys
+                  </a>
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="space-y-2">
+                  <Label htmlFor="openRouterApiKey">API Key</Label>
+                  <div className="relative">
+                    <Key className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      id="openRouterApiKey"
+                      type={showOpenRouterKey ? "text" : "password"}
+                      placeholder="sk-or-v1-..."
+                      value={settings.openRouterApiKey}
+                      onChange={(e) => handleChange("openRouterApiKey", e.target.value)}
+                      className="pl-10 pr-12"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-2 top-1/2 -translate-y-1/2"
+                      onClick={() => setShowOpenRouterKey(!showOpenRouterKey)}
+                    >
+                      {showOpenRouterKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Your API key is stored securely in the local database and never pushed to GitHub.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="openRouterModel">Model</Label>
+                  <div className="relative">
+                    <Brain className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      id="openRouterModel"
+                      placeholder="nvidia/nemotron-3-ultra-550b-a55b"
+                      value={settings.openRouterModel}
+                      onChange={(e) => handleChange("openRouterModel", e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Default:{" "}
+                    <code className="bg-muted px-1 py-0.5 rounded text-xs">nvidia/nemotron-3-ultra-550b-a55b</code>
+                    {" "}— NVIDIA NeMo Tutor 3 Ultra 550B
+                  </p>
+                </div>
+
+                <Separator />
+
+                <div className="rounded-lg bg-muted/50 p-4 space-y-2">
+                  <h4 className="font-medium text-sm">Current Model Info</h4>
+                  <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                    <span>Model:</span>
+                    <code className="bg-muted px-1.5 py-0.5 rounded">
+                      {settings.openRouterModel || "Not configured"}
+                    </code>
+                    <span>Provider:</span>
+                    <span>OpenRouter</span>
+                    <span>Temperature:</span>
+                    <span>0.2 (deterministic)</span>
+                    <span>Max tokens:</span>
+                    <span>2000</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
           {/* Default Values Tab */}
           <TabsContent value="defaults" className="space-y-6">
             <Card>
@@ -378,7 +464,10 @@ export default function SettingsPage() {
                       <h4 className="font-medium">Auto-create Jira tickets</h4>
                       <p className="text-sm text-muted-foreground">Automatically create tickets for high-confidence analyses (P0/P1)</p>
                     </div>
-                    <Button variant="outline" className="w-[60px] h-6 text-xs">Off</Button>
+                    <Switch
+                      checked={settings.autoCreateTickets}
+                      onCheckedChange={(v) => { setSettings(s => ({ ...s, autoCreateTickets: v })); setSaved(false) }}
+                    />
                   </div>
                   <Separator />
                   <div className="flex items-center justify-between">
@@ -386,7 +475,10 @@ export default function SettingsPage() {
                       <h4 className="font-medium">Include AI reasoning in ticket</h4>
                       <p className="text-sm text-muted-foreground">Attach full reasoning timeline to ticket description</p>
                     </div>
-                    <Button variant="default" className="w-[60px] h-6 text-xs">On</Button>
+                    <Switch
+                      checked={settings.includeReasoning}
+                      onCheckedChange={(v) => { setSettings(s => ({ ...s, includeReasoning: v })); setSaved(false) }}
+                    />
                   </div>
                   <Separator />
                   <div className="flex items-center justify-between">
@@ -394,7 +486,10 @@ export default function SettingsPage() {
                       <h4 className="font-medium">Duplicate detection</h4>
                       <p className="text-sm text-muted-foreground">Search existing tickets before creating new ones</p>
                     </div>
-                    <Button variant="default" className="w-[60px] h-6 text-xs">On</Button>
+                    <Switch
+                      checked={settings.duplicateDetection}
+                      onCheckedChange={(v) => { setSettings(s => ({ ...s, duplicateDetection: v })); setSaved(false) }}
+                    />
                   </div>
                   <Separator />
                   <div className="flex items-center justify-between">
@@ -402,7 +497,10 @@ export default function SettingsPage() {
                       <h4 className="font-medium">Attach raw logs to ticket</h4>
                       <p className="text-sm text-muted-foreground">Include uploaded log files as ticket attachments</p>
                     </div>
-                    <Button variant="default" className="w-[60px] h-6 text-xs">On</Button>
+                    <Switch
+                      checked={settings.attachRawLogs}
+                      onCheckedChange={(v) => { setSettings(s => ({ ...s, attachRawLogs: v })); setSaved(false) }}
+                    />
                   </div>
                   <Separator />
                   <div className="flex items-center justify-between">
@@ -410,7 +508,10 @@ export default function SettingsPage() {
                       <h4 className="font-medium">Notify assignee on creation</h4>
                       <p className="text-sm text-muted-foreground">Send Jira notification when ticket is created</p>
                     </div>
-                    <Button variant="default" className="w-[60px] h-6 text-xs">On</Button>
+                    <Switch
+                      checked={settings.notifyAssignee}
+                      onCheckedChange={(v) => { setSettings(s => ({ ...s, notifyAssignee: v })); setSaved(false) }}
+                    />
                   </div>
                 </div>
               </CardContent>

@@ -59,5 +59,14 @@ model Settings {
   defaultLabels  String?
   defaultComponents String?
   defaultAssignee String?
+  // OpenRouter AI
+  openRouterApiKey String?
+  openRouterModel  String?
+  // Advanced toggles
+  autoCreateTickets  Boolean @default(false)
+  includeReasoning   Boolean @default(true)
+  duplicateDetection  Boolean @default(true)
+  attachRawLogs      Boolean @default(true)
+  notifyAssignee     Boolean @default(true)
   updatedAt     DateTime @updatedAt
 }

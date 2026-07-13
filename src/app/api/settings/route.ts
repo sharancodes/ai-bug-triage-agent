@@ -9,7 +9,7 @@ export async function GET() {
     if (!settings) {
       return NextResponse.json({})
     }
-    const { jiraApiToken, ...safeSettings } = settings
+    const { jiraApiToken, openRouterApiKey, ...safeSettings } = settings
     return NextResponse.json(safeSettings)
   } catch (error) {
     console.error("Settings fetch error:", error)
