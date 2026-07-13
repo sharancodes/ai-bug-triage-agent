@@ -277,7 +277,8 @@ export default function AnalyzeBug() {
       })
 
       if (!res.ok) {
-        throw new Error("Analysis failed")
+        const err = await res.json().catch(() => ({ error: "Analysis failed" }))
+        throw new Error(err.error || "Analysis failed")
       }
 
       const data = await res.json()
@@ -293,7 +294,7 @@ export default function AnalyzeBug() {
         .catch(() => { /* metadata optional */ })
     } catch (err) {
       console.error("Analysis error:", err)
-      alert("Analysis failed. Please check your OpenRouter API key and try again.")
+      alert((err as Error).message || "Analysis failed")
       setStage("upload")
     }
   }
