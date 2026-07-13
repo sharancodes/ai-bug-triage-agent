@@ -163,12 +163,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing required fields: project, summary" }, { status: 400 })
     }
 
-    // Fetch settings from DB
-    const settings = await prisma.settings.findUnique({ where: { id: 1 } })
+    // Fetch settings from DB (for non-sensitive defaults like project/sprint/labels)
+    const settings = await prisma.settings.findUnique({ where: { id: 1 } }).catch(() => null)
 
-    const jiraBaseUrl = settings?.jiraUrl || DEFAULT_JIRA_URL
-    const jiraEmail = settings?.jiraEmail || process.env.JIRA_EMAIL
-    const jiraApiToken = settings?.jiraApiToken || process.env.JIRA_API_TOKEN
+    // Secrets from env vars first (works on Vercel serverless), DB fallback for local dev
+    const jiraBaseUrl = process.env.JIRA_BASE_URL || settings?.jiraUrl || DEFAULT_JIRA_URL
+    const jiraEmail = process.env.JIRA_EMAIL || settings?.jiraEmail || ""
+    const jiraApiToken = process.env.JIRA_API_TOKEN || settings?.jiraApiToken || ""
     const defaultProject = settings?.defaultProject || "SCRUM"
 
     // Use the project from the request body, or fall back to the configured default
@@ -295,15 +296,14 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    const settings = await prisma.settings.findUnique({ where: { id: 1 } })
-    const jiraBaseUrl = settings?.jiraUrl || DEFAULT_JIRA_URL
-    const jiraEmail = settings?.jiraEmail || process.env.JIRA_EMAIL
-    const jiraApiToken = settings?.jiraApiToken || process.env.JIRA_API_TOKEN
+    const settings = await prisma.settings.findUnique({ where: { id: 1 } }).catch(() => null)
+    const jiraBaseUrl = process.env.JIRA_BASE_URL || settings?.jiraUrl || DEFAULT_JIRA_URL
+    const jiraEmail = process.env.JIRA_EMAIL || settings?.jiraEmail || ""
+    const jiraApiToken = process.env.JIRA_API_TOKEN || settings?.jiraApiToken || ""
 
     if (!jiraEmail || !jiraApiToken) {
-      return NextResponse.json({ error: "Jira credentials not configured" }, { status: 401 })
+      return NextResponse.json({ error: "Jira credentials not configured" }, { status: 500 })
     }
-
     const authHeader = `Basic ${Buffer.from(`${jiraEmail}:${jiraApiToken}`).toString("base64")}`
     const headers = { "Authorization": authHeader, "Accept": "application/json" }
 

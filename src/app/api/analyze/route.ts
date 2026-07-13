@@ -5,14 +5,13 @@ export const dynamic = "force-dynamic"
 
 export async function POST(request: NextRequest) {
   try {
-    // Fetch OpenRouter credentials from DB settings (falls back to env vars)
-    const dbSettings = await prisma.settings.findUnique({ where: { id: 1 } })
-    const openRouterApiKey = dbSettings?.openRouterApiKey || process.env.OPENROUTER_API_KEY
-    const openRouterModel = dbSettings?.openRouterModel || process.env.OPENROUTER_MODEL || "nvidia/nemotron-3-ultra-550b-a55b"
+    // OpenRouter API key: read from env vars (available on Vercel serverless)
+    const openRouterApiKey = process.env.OPENROUTER_API_KEY
+    const openRouterModel = process.env.OPENROUTER_MODEL || "nvidia/nemotron-3-ultra-550b-a55b"
 
     if (!openRouterApiKey) {
       return NextResponse.json(
-        { error: "OpenRouter API key not configured. Please add it in Settings → AI / OpenRouter." },
+        { error: "OPENROUTER_API_KEY is not configured. Set it in Vercel project settings → Environment Variables." },
         { status: 500 }
       )
     }
